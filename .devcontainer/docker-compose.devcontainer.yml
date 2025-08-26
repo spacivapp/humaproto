@@ -1,0 +1,10 @@
+version: '3.1'
+
+services:
+  workspace:
+    build:
+      context: ..
+      dockerfile: .devcontainer/Dockerfile
+    volumes:
+      - ../:/workspace
+    command: sleep infinity

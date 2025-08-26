@@ -1,0 +1,16 @@
+{
+    "dockerComposeFile": "docker-compose.devcontainer.yml",
+    "service": "workspace",
+    "workspaceFolder": "/workspace",
+    "shutdownAction": "stopCompose",
+    "postCreateCommand": "export COREPACK_ENABLE_DOWNLOAD_PROMPT=0",
+    "customizations": {
+        "vscode": {
+            "extensions": [
+                "eamodio.gitlens",
+                "golang.go",
+                "ms-azuretools.vscode-docker"
+            ]
+        }
+    }
+}
