@@ -118,7 +118,7 @@ func schemaFromType(r huma.Registry, t reflect.Type) *huma.Schema {
 			s.ContentEncoding = "base64"
 		} else {
 			s.Type = huma.TypeArray
-			s.Nullable = true
+			// s.Nullable = true // slices and arrays shouldn't be nullable and should default to an empty []
 			s.Items = r.Schema(t.Elem(), true, t.Name()+"Item")
 
 			if t.Kind() == reflect.Array {
