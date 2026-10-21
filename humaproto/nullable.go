@@ -1,6 +1,7 @@
 package humaproto
 
 import (
+	"maps"
 	"reflect"
 	"slices"
 	"strings"
@@ -44,16 +45,21 @@ func applyNullable(s *huma.Schema, seen map[*huma.Schema]bool) {
 	seen[s] = true
 	for name, property := range s.Properties {
 		if marked, _ := property.Extensions[NullableExtension].(bool); marked {
-			delete(property.Extensions, NullableExtension)
+			// Another property may share this schema, so it keeps its marker
+			// and the wrapper holds an unmarked copy.
+			unmarked := *property
+			unmarked.Extensions = maps.Clone(property.Extensions)
+			delete(unmarked.Extensions, NullableExtension)
 			// huma validates no "null" type, so the enum is what makes this
 			// branch reject anything else.
 			s.Properties[name] = &huma.Schema{
-				AnyOf:       []*huma.Schema{property, {Type: "null", Enum: []any{nil}}},
+				AnyOf:       []*huma.Schema{&unmarked, {Type: "null", Enum: []any{nil}}},
 				Description: property.Description,
 				ReadOnly:    property.ReadOnly,
 				WriteOnly:   property.WriteOnly,
 			}
 			seen[s.Properties[name]] = true
+			property = &unmarked
 		}
 		applyNullable(property, seen)
 	}

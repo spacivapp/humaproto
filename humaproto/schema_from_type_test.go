@@ -149,3 +149,23 @@ func TestApplyNullableLeavesRepeatedMessagesNonNullable(t *testing.T) {
 		t.Fatalf("outers = %+v, but a list and its messages are never null", outers)
 	}
 }
+
+func TestApplyNullableWrapsEveryPropertySharingAMarkedSchema(t *testing.T) {
+	r := NewRegistry("#/components/schemas/", huma.DefaultSchemaNamer)
+	shared := &huma.Schema{Ref: "#/components/schemas/ProtoInner", Extensions: map[string]any{NullableExtension: true}}
+	holder := &huma.Schema{Type: huma.TypeObject, Properties: map[string]*huma.Schema{"first": shared, "second": shared}}
+	r.Map()["Holder"] = holder
+
+	ApplyNullable(r)
+	ApplyNullable(r)
+
+	for _, name := range []string{"first", "second"} {
+		wrapper := holder.Properties[name]
+		if len(wrapper.AnyOf) != 2 {
+			t.Fatalf("%s = %+v, want it made nullable", name, wrapper)
+		}
+		if _, marked := wrapper.AnyOf[0].Extensions[NullableExtension]; marked {
+			t.Fatalf("%s still carries the marker inside its wrapper", name)
+		}
+	}
+}
