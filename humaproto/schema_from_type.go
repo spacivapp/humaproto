@@ -253,15 +253,14 @@ func schemaFromType(r huma.Registry, t reflect.Type) *huma.Schema {
 					// requiredMap[name] = true
 				}
 
-				// JSONFormat marshals with EmitUnpopulated, which sends an unset
-				// message or optional field as null.
-				if f.Type.Kind() == reflect.Ptr && f.Tag.Get("protobuf") != "" {
-					fs = nullable(fs)
-					props[name] = fs
-				} else if f.Type.Kind() == reflect.Ptr && strings.Contains(f.Tag.Get("json"), "omitempty") && f.Tag.Get("nullable") != "true" {
-					// Special case: pointer with omitempty and not manually set to
-					// nullable, which will never get `null` sent over the wire.
+				// Special case: pointer with omitempty and not manually set to
+				// nullable, which will never get `null` sent over the wire.
+				if f.Type.Kind() == reflect.Ptr && strings.Contains(f.Tag.Get("json"), "omitempty") && f.Tag.Get("nullable") != "true" {
 					fs.Nullable = false
+				}
+
+				if f.Type.Kind() == reflect.Ptr && f.Tag.Get("protobuf") != "" {
+					markNullable(fs)
 				}
 			}
 		}
@@ -381,14 +380,4 @@ func getFields(typ reflect.Type, visited map[reflect.Type]struct{}) []fieldInfo 
 	}
 
 	return fields
-}
-
-// A reference can't carry nullable itself, so it becomes one of the referenced
-// schema or null.
-func nullable(s *huma.Schema) *huma.Schema {
-	if s.Ref == "" {
-		s.Nullable = true
-		return s
-	}
-	return &huma.Schema{AnyOf: []*huma.Schema{s, {Type: "null"}}}
 }
