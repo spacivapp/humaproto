@@ -20,7 +20,7 @@ type protoOuter struct {
 }
 
 type protoExplicit struct {
-	Label *string `protobuf:"bytes,1,opt,name=label,proto3,oneof" json:"label,omitempty" nullable:"false"`
+	Inner *protoInner `protobuf:"bytes,1,opt,name=inner,proto3" json:"inner,omitempty" nullable:"false"`
 }
 
 type protoFlagged struct {
@@ -52,7 +52,7 @@ func validates(t *testing.T, r huma.Registry, s *huma.Schema, value string) bool
 func TestProtoPointerFieldsAreMarkedNullable(t *testing.T) {
 	_, s := outerSchema(t, protoOuter{})
 
-	for name, want := range map[string]bool{"inner": true, "label": true, "name": false} {
+	for name, want := range map[string]bool{"inner": true, "label": false, "name": false} {
 		marked, _ := s.Properties[name].Extensions[NullableExtension].(bool)
 		if marked != want {
 			t.Errorf("%s marked = %v, want %v", name, marked, want)
@@ -86,10 +86,10 @@ func TestApplyNullableAcceptsNullOrTheValueAndNothingElse(t *testing.T) {
 		t.Fatalf("inner = %+v, want anyOf the message reference and null", inner)
 	}
 	for value, want := range map[string]bool{
-		`{"inner": null, "label": null, "name": ""}`:          true,
+		`{"inner": null, "name": ""}`:                         true,
 		`{"inner": {"value": "x"}, "label": "l", "name": ""}`: true,
 		`{"inner": "text", "name": ""}`:                       false,
-		`{"label": 3, "name": ""}`:                            false,
+		`{"inner": null, "label": 3, "name": ""}`:             false,
 	} {
 		if got := validates(t, r, s, value); got != want {
 			t.Errorf("%s: valid = %v, want %v", value, got, want)
@@ -100,8 +100,8 @@ func TestApplyNullableAcceptsNullOrTheValueAndNothingElse(t *testing.T) {
 func TestAnExplicitlyNonNullableProtoFieldIsNotMarked(t *testing.T) {
 	_, s := outerSchema(t, protoExplicit{})
 
-	if _, marked := s.Properties["label"].Extensions[NullableExtension]; marked {
-		t.Fatal("label is tagged nullable:\"false\" but was marked nullable")
+	if _, marked := s.Properties["inner"].Extensions[NullableExtension]; marked {
+		t.Fatal("inner is tagged nullable:\"false\" but was marked nullable")
 	}
 }
 
@@ -112,5 +112,40 @@ func TestApplyNullableKeepsTheFieldsFlagsAndDescription(t *testing.T) {
 	inner := s.Properties["inner"]
 	if !inner.ReadOnly || inner.WriteOnly || inner.Description != "The inner value." {
 		t.Fatalf("inner = %+v, want readOnly and its description kept on the nullable wrapper", inner)
+	}
+}
+
+type protoList struct {
+	Outers []*protoOuter `protobuf:"bytes,1,rep,name=outers,proto3" json:"outers,omitempty"`
+}
+
+func TestApplyNullableReachesSchemasNestedInline(t *testing.T) {
+	r := NewRegistry("#/components/schemas/", huma.DefaultSchemaNamer)
+	marked := &huma.Schema{Ref: "#/components/schemas/ProtoInner", Extensions: map[string]any{NullableExtension: true}}
+	nested := &huma.Schema{Type: huma.TypeObject, Properties: map[string]*huma.Schema{"inner": marked}}
+	holder := &huma.Schema{
+		Type:  huma.TypeObject,
+		AllOf: []*huma.Schema{nested},
+		Properties: map[string]*huma.Schema{
+			"items": {Type: huma.TypeArray, Items: nested},
+			"self":  nil,
+		},
+	}
+	holder.Properties["self"] = holder
+	r.Map()["Holder"] = holder
+
+	ApplyNullable(r)
+
+	if len(nested.Properties["inner"].AnyOf) != 2 {
+		t.Fatalf("inner inside allOf and items = %+v, want it made nullable", nested.Properties["inner"])
+	}
+}
+
+func TestApplyNullableLeavesRepeatedMessagesNonNullable(t *testing.T) {
+	r, s := outerSchema(t, protoList{})
+	ApplyNullable(r)
+
+	if outers := s.Properties["outers"]; outers.AnyOf != nil || outers.Items.AnyOf != nil {
+		t.Fatalf("outers = %+v, but a list and its messages are never null", outers)
 	}
 }

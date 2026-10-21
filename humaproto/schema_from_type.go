@@ -259,7 +259,7 @@ func schemaFromType(r huma.Registry, t reflect.Type) *huma.Schema {
 					fs.Nullable = false
 				}
 
-				if f.Type.Kind() == reflect.Ptr && f.Tag.Get("protobuf") != "" && f.Tag.Get("nullable") != "false" {
+				if f.Type.Kind() == reflect.Ptr && isPresenceProtoField(f) && f.Tag.Get("nullable") != "false" {
 					markNullable(fs)
 				}
 			}
