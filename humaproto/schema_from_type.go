@@ -258,6 +258,10 @@ func schemaFromType(r huma.Registry, t reflect.Type) *huma.Schema {
 				if f.Type.Kind() == reflect.Ptr && strings.Contains(f.Tag.Get("json"), "omitempty") && f.Tag.Get("nullable") != "true" {
 					fs.Nullable = false
 				}
+
+				if f.Type.Kind() == reflect.Ptr && isPresenceProtoField(f) && f.Tag.Get("nullable") != "false" {
+					markNullable(fs)
+				}
 			}
 		}
 		s.Type = huma.TypeObject
