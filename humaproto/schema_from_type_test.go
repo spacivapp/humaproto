@@ -19,6 +19,14 @@ type protoOuter struct {
 	Name  string      `protobuf:"bytes,3,opt,name=name,proto3" json:"name,omitempty"`
 }
 
+type protoExplicit struct {
+	Label *string `protobuf:"bytes,1,opt,name=label,proto3,oneof" json:"label,omitempty" nullable:"false"`
+}
+
+type protoFlagged struct {
+	Inner *protoInner `protobuf:"bytes,1,opt,name=inner,proto3" json:"inner,omitempty" readOnly:"true" doc:"The inner value."`
+}
+
 type plainOuter struct {
 	Count *int `json:"count,omitempty"`
 }
@@ -86,5 +94,23 @@ func TestApplyNullableAcceptsNullOrTheValueAndNothingElse(t *testing.T) {
 		if got := validates(t, r, s, value); got != want {
 			t.Errorf("%s: valid = %v, want %v", value, got, want)
 		}
+	}
+}
+
+func TestAnExplicitlyNonNullableProtoFieldIsNotMarked(t *testing.T) {
+	_, s := outerSchema(t, protoExplicit{})
+
+	if _, marked := s.Properties["label"].Extensions[NullableExtension]; marked {
+		t.Fatal("label is tagged nullable:\"false\" but was marked nullable")
+	}
+}
+
+func TestApplyNullableKeepsTheFieldsFlagsAndDescription(t *testing.T) {
+	r, s := outerSchema(t, protoFlagged{})
+	ApplyNullable(r)
+
+	inner := s.Properties["inner"]
+	if !inner.ReadOnly || inner.WriteOnly || inner.Description != "The inner value." {
+		t.Fatalf("inner = %+v, want readOnly and its description kept on the nullable wrapper", inner)
 	}
 }

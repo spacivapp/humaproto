@@ -26,7 +26,12 @@ func ApplyNullable(r huma.Registry) {
 			delete(property.Extensions, NullableExtension)
 			// huma validates no "null" type, so the enum is what makes this
 			// branch reject anything else.
-			s.Properties[name] = &huma.Schema{AnyOf: []*huma.Schema{property, {Type: "null", Enum: []any{nil}}}}
+			s.Properties[name] = &huma.Schema{
+				AnyOf:       []*huma.Schema{property, {Type: "null", Enum: []any{nil}}},
+				Description: property.Description,
+				ReadOnly:    property.ReadOnly,
+				WriteOnly:   property.WriteOnly,
+			}
 		}
 	}
 }
