@@ -3,6 +3,7 @@ package humaproto
 import (
 	"encoding/json"
 	"reflect"
+	"strings"
 	"testing"
 
 	"github.com/danielgtaylor/huma/v2"
@@ -24,7 +25,7 @@ type protoExplicit struct {
 }
 
 type protoFlagged struct {
-	Inner *protoInner `protobuf:"bytes,1,opt,name=inner,proto3" json:"inner,omitempty" readOnly:"true" doc:"The inner value."`
+	Inner *protoInner `protobuf:"bytes,1,opt,name=inner,proto3" json:"inner,omitempty" readOnly:"true" deprecated:"true" doc:"The inner value."`
 }
 
 type plainOuter struct {
@@ -110,8 +111,8 @@ func TestApplyNullableKeepsTheFieldsFlagsAndDescription(t *testing.T) {
 	ApplyNullable(r)
 
 	inner := s.Properties["inner"]
-	if !inner.ReadOnly || inner.WriteOnly || inner.Description != "The inner value." {
-		t.Fatalf("inner = %+v, want readOnly and its description kept on the nullable wrapper", inner)
+	if !inner.ReadOnly || inner.WriteOnly || !inner.Deprecated || inner.Description != "The inner value." {
+		t.Fatalf("inner = %+v, want readOnly, deprecated and its description kept on the nullable wrapper", inner)
 	}
 }
 
@@ -167,5 +168,45 @@ func TestApplyNullableWrapsEveryPropertySharingAMarkedSchema(t *testing.T) {
 		if _, marked := wrapper.AnyOf[0].Extensions[NullableExtension]; marked {
 			t.Fatalf("%s still carries the marker inside its wrapper", name)
 		}
+	}
+}
+
+func TestApplyNullableWritesTheReferenceOrNull(t *testing.T) {
+	r, s := outerSchema(t, protoOuter{})
+	ApplyNullable(r)
+
+	written, err := json.Marshal(s.Properties["inner"])
+	if err != nil {
+		t.Fatal(err)
+	}
+	var got any
+	if err := json.Unmarshal(written, &got); err != nil {
+		t.Fatal(err)
+	}
+	want := map[string]any{"anyOf": []any{
+		map[string]any{"$ref": "#/components/schemas/ProtoInner"},
+		map[string]any{"type": "null", "enum": []any{nil}},
+	}}
+	if !reflect.DeepEqual(got, want) {
+		t.Fatalf("inner written as %s", written)
+	}
+}
+
+func TestApplyNullableLeavesNoMarkerBehind(t *testing.T) {
+	r := NewRegistry("#/components/schemas/", huma.DefaultSchemaNamer)
+	shared := &huma.Schema{Ref: "#/components/schemas/ProtoInner", Extensions: map[string]any{NullableExtension: true}}
+	r.Map()["Holder"] = &huma.Schema{Type: huma.TypeObject, Properties: map[string]*huma.Schema{
+		"one":  shared,
+		"many": {Type: huma.TypeArray, Items: shared},
+	}}
+
+	ApplyNullable(r)
+
+	written, err := json.Marshal(r.Map())
+	if err != nil {
+		t.Fatal(err)
+	}
+	if strings.Contains(string(written), NullableExtension) {
+		t.Fatalf("spec still carries %s: %s", NullableExtension, written)
 	}
 }

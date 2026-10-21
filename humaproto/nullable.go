@@ -30,11 +30,17 @@ func markNullable(s *huma.Schema) {
 }
 
 // ApplyNullable rewrites every marked field in the registry as its schema or
-// null, for a spec that describes responses as JSONFormat writes them.
+// null, for a spec that describes responses as JSONFormat writes them. It
+// changes the registry in place, so it belongs on a registry built only to
+// write a spec: on one serving requests it would weaken their validation.
 func ApplyNullable(r huma.Registry) {
 	seen := map[*huma.Schema]bool{}
 	for _, s := range r.Map() {
 		applyNullable(s, seen)
+	}
+	unmarked := map[*huma.Schema]bool{}
+	for _, s := range r.Map() {
+		removeMarkers(s, unmarked)
 	}
 }
 
@@ -54,7 +60,9 @@ func applyNullable(s *huma.Schema, seen map[*huma.Schema]bool) {
 			// branch reject anything else.
 			s.Properties[name] = &huma.Schema{
 				AnyOf:       []*huma.Schema{&unmarked, {Type: "null", Enum: []any{nil}}},
+				Title:       property.Title,
 				Description: property.Description,
+				Deprecated:  property.Deprecated,
 				ReadOnly:    property.ReadOnly,
 				WriteOnly:   property.WriteOnly,
 			}
@@ -71,4 +79,25 @@ func applyNullable(s *huma.Schema, seen map[*huma.Schema]bool) {
 		applyNullable(branch, seen)
 	}
 	applyNullable(s.Not, seen)
+}
+
+// A marked schema can also be reachable where it is not a property, such as
+// the items of a list sharing it.
+func removeMarkers(s *huma.Schema, seen map[*huma.Schema]bool) {
+	if s == nil || seen[s] {
+		return
+	}
+	seen[s] = true
+	delete(s.Extensions, NullableExtension)
+	for _, property := range s.Properties {
+		removeMarkers(property, seen)
+	}
+	removeMarkers(s.Items, seen)
+	if additional, ok := s.AdditionalProperties.(*huma.Schema); ok {
+		removeMarkers(additional, seen)
+	}
+	for _, branch := range slices.Concat(s.OneOf, s.AnyOf, s.AllOf) {
+		removeMarkers(branch, seen)
+	}
+	removeMarkers(s.Not, seen)
 }
